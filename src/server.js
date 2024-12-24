@@ -8,8 +8,7 @@ const commentRoute = require('./routes/commentRoute')
 
 const app = express();
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true}))
-
+app.use(bodyParser.urlencoded({ extended: true}));
 //Posts
 app.use('/', postRoute);
 //user

@@ -1,6 +1,7 @@
-const { postModel, userModel } = require('../models/associations');
-const { Sequelize } = require('sequelize');
+const { postModel, userModel, imageModel } = require('../models/associations');
+const { Sequelize} = require('sequelize');
 const redisClient = require('../utils/redisClient'); 
+const fs = require('fs').promises;
 
 
 const DEFAULT_PAGE = 1;
@@ -25,7 +26,7 @@ async function getCache(key) {
     }
 }
 
-async function getAllPosts(req, res) {
+async function getAllPostsApproved(req, res) {
     const page = parseInt(req.query.page) || DEFAULT_PAGE;
     const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
     const offset = (page - 1) * limit;
@@ -39,15 +40,21 @@ async function getAllPosts(req, res) {
         }
 
         const posts = await postModel.findAndCountAll({
-            attributes: ['post_id', 'title', 'content', 'image_url'],
-            include: [{
-                model: userModel,
-                as: 'author',
-                attributes: ['username']
-            }],
-            order: [['created_at', 'DESC']],
-            limit,
-            offset,
+            attributes: ['post_id', 'title', 'content'],
+            where: { is_approved: true },
+            include: [
+                { 
+                    model: userModel, 
+                    attributes: ['full_name'] 
+                },
+                { 
+                    model: imageModel, 
+                    attributes: ['image_url'], 
+                    where: { post_id: Sequelize.col('post_id') }  
+                }
+            ],
+            limit: limit,
+            offset: offset
         });
 
         await setCache(cacheKey, posts);
@@ -58,6 +65,7 @@ async function getAllPosts(req, res) {
         return res.status(500).json({ success: false, message: "Failed to fetch posts." });
     }
 }
+
 
 async function getPost(req, res) {
     const { keyword = '' } = req.query;
@@ -92,21 +100,21 @@ async function getPost(req, res) {
             offset,
         });
 
-        await redisClient.set(cacheKey, JSON.stringify(posts), 'EX', 3600); // Lưu trong 1 giờ
+        await setCache(cacheKey, posts);
 
-        res.status(200).json({ success: true, data: posts, fromCache: false });
+        return res.status(200).json({ success: true, data: posts, fromCache: false });
     } catch (error) {
         console.error(`Error fetching posts with keyword "${keyword}": ${error.message}`);
-        res.status(500).json({ success: false, message: 'Failed to fetch posts.', error: error.message });
+        return res.status(500).json({ success: false, message: 'Failed to fetch posts.', error: error.message });
     }
 }
 
+
 async function createPost(req, res) {
-    const userId = req.user?.user_id;
+    const user_id = req.user?.user_id;
 
     try {
-        const { title, content, image_url } = req.body;
-
+        const { title, content } = req.body;
         if (!title || !content) {
             return res.status(400).json({ success: false, message: "Title and content are required." });
         }
@@ -114,17 +122,25 @@ async function createPost(req, res) {
         const newPost = await postModel.create({
             title,
             content,
-            image_url,
-            author_id: userId
+            user_id
         });
+        if(req.files && req.files.length > 0){
+            const image_urls = req.files.map(file => file.path)
+            await Promise.all(
+                image_urls.map(image_url => {
+                    imageModel.create({
+                        post_id: newPost.post_id,
+                        image_url: image_url
+                    })
+                })
+            )
+        }
 
-        await redisClient.del(`posts:page=1:limit=10`);
-        await redisClient.del(`posts:page=2:limit=10`);
+        await redisClient.del();
 
         return res.status(201).json({
             success: true,
-            message: 'Post created successfully.',
-            post: newPost
+            message: 'Post created successfully.'
         });
     } catch (error) {
         console.error(`Error creating post: ${error.message}`);
@@ -132,9 +148,26 @@ async function createPost(req, res) {
     }
 }
 
+async function approvePost(req, res){
+    const  post_id  = req.params.post_id;
+    try {
+        const post = await postModel.findByPk( post_id );
+        if( !post ){
+            return res.status(404).json({ success: false, message: 'Post not found' });
+        }
+
+        post.is_approved = true;
+        await post.save();
+
+        return res.status(200).json({ success: true, message: 'Post approved successfully' });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to approve post' });
+    }
+}
+
 async function updatePost(req, res) {
     const post_id = req.params.post_id;
-    const user_id = req.user?.user_id;
+    const { user_id, role } = req.user;
 
     try {
         const post = await postModel.findOne({ where: { post_id } });
@@ -143,35 +176,62 @@ async function updatePost(req, res) {
             return res.status(404).json({ success: false, message: 'Post not found' });
         }
 
-        if (post.author_id !== user_id) {
-            return res.status(403).json({ success: false, message: 'You are not allowed to edit this post.' });
+        if (role === 'admin' || post.user_id == user_id) {
+            
+            const { title, content } = req.body;
+            await postModel.update(
+                {
+                    title: title || post.title,
+                    content: content || post.content
+                },
+                { where: { post_id } }
+            );
+
+            const oldImages = await imageModel.findAll({
+                where: { post_id },
+                attributes: ['image_url']
+            });
+
+            if (req.files && req.files.length > 0) {
+                await Promise.all(
+                    oldImages.map(image => {
+                        try {
+                            fs.unlinkSync(image.image_url); 
+                        } catch (error) {
+                            console.error(`Failed to delete: ${image.image_url}`, error);
+                        }
+                    })
+                );
+
+                await imageModel.destroy({ where: { post_id } });
+
+                const image_urls = req.files.map(file => file.path);
+                await Promise.all(
+                    image_urls.map(async (image_url) => {
+                        await imageModel.create({
+                            post_id,
+                            image_url
+                        });
+                    })
+                );
+            }
+
+            await redisClient.del(post_id);
+
+            return res.status(200).json({ success: true, message: 'Post updated successfully.' });
         }
 
-        const { title, content, image_url } = req.body;
-
-        await postModel.update(
-            {
-                title: title || post.title,
-                content: content || post.content,
-                image_url: image_url || post.image_url
-            },
-            { where: { post_id } }
-        );
-
-        await redisClient.del(`posts:page=1:limit=10`);
-        await redisClient.del(`posts:page=2:limit=10`);
-
-        return res.status(200).json({ success: true, message: 'Post updated successfully.' });
+        return res.status(403).json({ success: false, message: 'You are not allowed to edit this post.' });
     } catch (error) {
-        console.error(`Error updating post with ID ${post_id}: ${error.message}`);
-        return res.status(500).json({ success: false, message: 'Failed to edit post' });
+        console.error('Error updating post:', error);
+        return res.status(500).json({ success: false, message: 'Failed to edit post', error: error.message });
     }
 }
 
 async function removePost(req, res) {
     const post_id = req.params.post_id;
-    const user_id = req.user?.user_id;
-
+    const { user_id, role } = req.user;  
+    console.log(role);
     try {
         const post = await postModel.findOne({ where: { post_id } });
 
@@ -179,21 +239,38 @@ async function removePost(req, res) {
             return res.status(404).json({ success: false, message: 'Post not found.' });
         }
 
-        if (post.author_id !== user_id) {
-            return res.status(403).json({ success: false, message: 'You are not allowed to delete this post.' });
+        if (role === 'admin' || post.user_id === user_id) {
+            const images = await imageModel.findAll({
+                where: { post_id },
+                attributes: ['image_url']
+            });
+
+            const unlinkPromises = images.map(image => {
+                return new Promise((resolve, reject) => {
+                    fs.unlink(image.image_url, (err) => {
+                        if (err) {
+                            console.error(`Failed to delete: ${image.image_url}`, err);
+                            return reject(err);
+                        }
+                        resolve();
+                    });
+                });
+            });
+
+            await Promise.all(unlinkPromises);
+
+            await imageModel.destroy({ where: { post_id } });
+            await postModel.destroy({ where: { post_id } });
+            await redisClient.del(post_id);
+
+            return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
         }
-
-        await postModel.destroy({ where: { post_id } });
-
-        await redisClient.del(`posts:page=1:limit=10`);
-        await redisClient.del(`posts:page=2:limit=10`);
-
-        return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
+        return res.status(403).json({ success: false, message: 'You are not allowed to delete this post.' });
     } catch (error) {
-        console.error(`Error deleting post with ID ${post_id}: ${error.message}`);
+        console.error(`Error deleting post: ${error.message}`);
         return res.status(500).json({ success: false, message: 'Failed to delete post.' });
     }
 }
 
 
-module.exports = { getAllPosts, getPost, createPost, updatePost, removePost };
+module.exports = { getAllPostsApproved, getPost, createPost, approvePost, updatePost, removePost };

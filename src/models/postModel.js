@@ -16,13 +16,13 @@ const post = db.define('post',{
         type: DataTypes.TEXT,
         allowNull: false 
     },
-    author_id: {
+    is_approved: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+    },
+    user_id: {
         type: DataTypes.INTEGER,
         allowNull: false
-    },
-    image_url: {
-        type: DataTypes.STRING,
-        allowNull: true
     },
     created_at: {
         type: DataTypes.DATE,

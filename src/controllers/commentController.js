@@ -49,7 +49,6 @@ async function createComment(req, res){
 async function editComment(req, res){
     const user_id = req.user?.user_id;
     const { comment_id } = req.query;
-    console.log(comment_id)
     try {
         const comment = await commentModel.findOne({where: {comment_id}});
         if(!comment){

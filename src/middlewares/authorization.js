@@ -6,7 +6,6 @@ async function isAuthorized(req, res, next) {
 
         const user_id = req.params.user_id;
         const { role, user_id: requester_id } = req.user; 
-        console.log(role)
         if (role === 'admin' || parseInt(user_id) === requester_id) {
             return next();
         }

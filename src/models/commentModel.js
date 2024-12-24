@@ -24,11 +24,18 @@ const comment = db.define('comment', {
         type: DATATYPES.DATE,
         defaultValue: DATATYPES.NOW,
         field: 'created_at'
+    },
+    updated_at: {
+        type: DATATYPES.DATE,
+        defaultValue: DATATYPES.NOW,
+        onUpdate: DATATYPES.NOW,
+        field: 'updated_at'
     }
 }, {
     tableName: 'comments',
     timestamps: false,
-    createdAt: 'created_at'
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
 })
 
 
