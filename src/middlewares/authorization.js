@@ -2,8 +2,6 @@ const { Account } = require('../models/accountModel');
 
 async function isAuthorized(req, res, next) {
     try {
-        console.log('res type:', typeof res);
-
         const user_id = req.params.user_id;
         const { role, user_id: requester_id } = req.user; 
         if (role === 'admin' || parseInt(user_id) === requester_id) {
@@ -20,7 +18,6 @@ async function isAuthorized(req, res, next) {
             message: 'Authorization error.',
             error: error.message,
         });
-
     }
 }
 

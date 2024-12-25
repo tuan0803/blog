@@ -8,20 +8,15 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 
 async function setCache(key, value, expiration = 3600) {
-    console.log(`Setting cache for key: ${key}`);
     await redisClient.set(key, JSON.stringify(value), 'EX', expiration);
-    console.log(`Cache set for key: ${key}`);  
 }
 
 
 async function getCache(key) {
-    console.log(`Getting cache for key: ${key}`);
     const cachedData = await redisClient.get(key);
     if (cachedData) {
-        console.log(`Cache hit for key: ${key}`);
         return JSON.parse(cachedData);
     } else {
-        console.log(`Cache miss for key: ${key}`);
         return null;
     }
 }
@@ -114,8 +109,9 @@ async function createPost(req, res) {
     const user_id = req.user?.user_id;
 
     try {
+        await redisClient.flushDb(); 
         const { title, content } = req.body;
-        if (!title || !content) {
+        if (title === ' ' || content === ' ') {
             return res.status(400).json({ success: false, message: "Title and content are required." });
         }
 
@@ -124,19 +120,18 @@ async function createPost(req, res) {
             content,
             user_id
         });
-        if(req.files && req.files.length > 0){
-            const image_urls = req.files.map(file => file.path)
+
+        if (req.files && req.files.length > 0) {
+            const image_urls = req.files.map(file => file.path);
             await Promise.all(
                 image_urls.map(image_url => {
                     imageModel.create({
                         post_id: newPost.post_id,
                         image_url: image_url
-                    })
+                    });
                 })
-            )
+            );
         }
-
-        await redisClient.del();
 
         return res.status(201).json({
             success: true,
@@ -151,6 +146,7 @@ async function createPost(req, res) {
 async function approvePost(req, res){
     const  post_id  = req.params.post_id;
     try {
+        await redisClient.del(post_id);
         const post = await postModel.findByPk( post_id );
         if( !post ){
             return res.status(404).json({ success: false, message: 'Post not found' });
@@ -230,8 +226,7 @@ async function updatePost(req, res) {
 
 async function removePost(req, res) {
     const post_id = req.params.post_id;
-    const { user_id, role } = req.user;  
-    console.log(role);
+    const { user_id, role } = req.user;
     try {
         const post = await postModel.findOne({ where: { post_id } });
 
@@ -245,16 +240,14 @@ async function removePost(req, res) {
                 attributes: ['image_url']
             });
 
-            const unlinkPromises = images.map(image => {
-                return new Promise((resolve, reject) => {
-                    fs.unlink(image.image_url, (err) => {
-                        if (err) {
-                            console.error(`Failed to delete: ${image.image_url}`, err);
-                            return reject(err);
-                        }
-                        resolve();
-                    });
-                });
+            const unlinkPromises = images.map(async (image) => {
+                try {
+                    await fs.access(image.image_url);
+                    await fs.unlink(image.image_url); 
+                    console.log(`Deleted: ${image.image_url}`);
+                } catch (error) {
+                    console.warn(`File not found: ${image.image_url}`); 
+                }
             });
 
             await Promise.all(unlinkPromises);
@@ -265,12 +258,14 @@ async function removePost(req, res) {
 
             return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
         }
+
         return res.status(403).json({ success: false, message: 'You are not allowed to delete this post.' });
     } catch (error) {
         console.error(`Error deleting post: ${error.message}`);
         return res.status(500).json({ success: false, message: 'Failed to delete post.' });
     }
 }
+
 
 
 module.exports = { getAllPostsApproved, getPost, createPost, approvePost, updatePost, removePost };

@@ -2,8 +2,11 @@
 const { userModel, accountModel } = require('../models/associations');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const redisClient = require('../utils/redisClient');
 const sendEmail = require('../utils/sendEmail');  
 
+
+const TOKEN_EXPIRATION_TIME = 3600;
 function generateToken(acc) {
     const payload = {
         user_id: acc.user_id,
@@ -17,7 +20,6 @@ function generateToken(acc) {
 
 async function login(req, res) {
     const { username, password } = req.body;
-    console.log(req.body)
 
     if (!username || !password) {
         return res.status(400).json({ message: 'Username and password are required' });
@@ -80,6 +82,48 @@ async function register (req, res) {
     }
 };
 
+async function logout(req, res) {
+    const token = req.header('Authorization')?.split(' ')[1]; 
+    console.log(token)
+    try {
+        redisClient.setEx(token, TOKEN_EXPIRATION_TIME, 'blacklist');
+        res.clearCookie('token');
+        res.json({ message: 'Logged out successfully.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error logging out.', error: error.message });
+    }
+}
+
+async function changePassword(req, res) {
+    const user_id = req.user?.user_id;
+    const { password, newpassword } = req.body;
+
+    if (!newpassword || newpassword.length < 6) {
+        return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
+    }
+
+    try {
+        const acc = await accountModel.findOne({ where: { user_id } });
+
+        if (!acc) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const isValidPassword = await bcrypt.compare(password, acc.password);
+        if (!isValidPassword) {
+            return res.status(400).json({ message: 'Invalid old password' });
+        }
+
+        const hashedNewPassword = await bcrypt.hash(newpassword, 10); 
+        await accountModel.update({ password: hashedNewPassword }, { where: { user_id } });
+
+        return res.status(200).json({ message: 'Password updated successfully.' });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Error changing password', error: error.message });
+    }
+}
 
 async function verifyAccount (req, res) {
     const { token } = req.params;
@@ -102,4 +146,4 @@ async function verifyAccount (req, res) {
     }
 };
 
-module.exports = { login, register, verifyAccount };
+module.exports = { login, register, logout, changePassword, verifyAccount };
