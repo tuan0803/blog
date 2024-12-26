@@ -1,4 +1,6 @@
 const { commentModel, userModel, postModel } = require('../models/associations');
+const redisClient = require('../utils/redisClient'); 
+
 
 async function getAllComments(req, res){
     try {
@@ -38,7 +40,7 @@ async function createComment(req, res){
             post_id,
             user_id
         });
-
+        await redisClient.flushDb();
         return res.status(201).json({ success: true, message: "Created successfully.", comment: newComment });
 
     } catch(error){
@@ -47,7 +49,7 @@ async function createComment(req, res){
 }
 
 async function editComment(req, res){
-    const user_id = req.user?.user_id;
+    const user_id = req.user.user_id;
     const { comment_id } = req.query;
     try {
         const comment = await commentModel.findOne({where: {comment_id}});
@@ -58,14 +60,14 @@ async function editComment(req, res){
             return res.status(403).json({ success: false, message: "You are not allowed to edit this comment." });
         }
         const {content} = req.body;
-        console.log(content)
-        await commentModel.update({
+        const commentEdit =await commentModel.update({
             content: content || comment.content,
             user_id,
             post_id: comment.post_id
         }, {
             where: {comment_id: comment_id}
         })
+        await redisClient.flushDb();
         res.status(200).json({ success: true, message: "Updated successfully." });
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to update comment.", error: error.message });
@@ -73,16 +75,16 @@ async function editComment(req, res){
 }
 
 async function removeComment(req, res){
-    const user_id = req.user?.user_id;
+    const { user_id, role} = req.user;
     const comment_id = req.params.comment_id;
     try {
         const comment = await commentModel.findOne({ where: {comment_id}});
-        if(comment.user_id !== user_id){
-            return res.status(403).json({ success: false, message: "You are not allowed to delete this comment." })
+        if( role ==='admin' || comment.user_id === user_id){
+            await redisClient.flushDb();
+            await commentModel.destroy({where: { comment_id }});
+            return res.status(200).json({ success: true, message: "Deleted successfully." });
         }
-
-        await commentModel.destroy({where: { comment_id }});
-        res.status(200).json({ success: true, message: "Deleted successfully." })
+        return res.status(403).json({ success: false, message: "You are not allowed to delete this comment." })
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to delete comment.", error: error.message });
     }

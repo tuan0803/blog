@@ -14,7 +14,6 @@ function generateToken(acc) {
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
-    console.log(token)
     return token;
 }
 
@@ -43,8 +42,7 @@ async function login(req, res) {
 }
 
 async function register (req, res) {
-    const { full_name, email, username, password } = req.body;
-    console.log(req.body)
+    const { full_name, email, username, password, phone, address } = req.body;
 
     try {
         if (!full_name || !email || !username || !password) {
@@ -61,6 +59,8 @@ async function register (req, res) {
         const newUser = await userModel.create({
             full_name,
             email,
+            phone,
+            address
         });
 
         const newAccount = await accountModel.create({
@@ -83,10 +83,11 @@ async function register (req, res) {
 };
 
 async function logout(req, res) {
-    const token = req.header('Authorization')?.split(' ')[1]; 
-    console.log(token)
+    const token = req.header('Authorization')?.split(' ')[1];
     try {
-        redisClient.setEx(token, TOKEN_EXPIRATION_TIME, 'blacklist');
+        const tokenKey = `blacklist:${token}`;
+        await redisClient.setEx(tokenKey, TOKEN_EXPIRATION_TIME, 'blacklist');
+
         res.clearCookie('token');
         res.json({ message: 'Logged out successfully.' });
     } catch (error) {

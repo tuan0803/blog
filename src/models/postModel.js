@@ -16,13 +16,13 @@ const post = db.define('post',{
         type: DataTypes.TEXT,
         allowNull: false 
     },
-    is_approved: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: false,
-    },
     user_id: {
         type: DataTypes.INTEGER,
         allowNull: false
+    },
+    status: {
+        type: DataTypes.ENUM('pending', 'approved', 'rejected'),
+        defaultValue: 'pending'
     },
     created_at: {
         type: DataTypes.DATE,

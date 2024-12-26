@@ -14,6 +14,8 @@ imageModel.belongsTo(postModel, { foreignKey: 'post_id' });
 //comment
 userModel.hasMany(commentModel, { foreignKey: 'user_id' });
 commentModel.belongsTo(userModel, { foreignKey: 'user_id' });
+postModel.hasMany(commentModel, { foreignKey: 'post_id' });
+commentModel.belongsTo(postModel, { foreignKey: 'post_id' });
 //account
 userModel.hasOne(accountModel, { foreignKey: 'user_id' });
 accountModel.belongsTo(userModel, { foreignKey: 'user_id' });

@@ -17,11 +17,11 @@ const User = sequelize.define('User', {
   },
   phone: {
     type: DataTypes.STRING(20),
-    allowNull: true,
+    allowNull: false,
   },
   address: {
     type: DataTypes.STRING(255),
-    allowNull: true,
+    allowNull: false,
   },
   created_at: {
     type: DataTypes.DATE,

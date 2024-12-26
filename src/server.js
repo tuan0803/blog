@@ -19,6 +19,6 @@ app.use('/auth', acc);
 app.use('/api', commentRoute);
 
 
-app.listen(3000,()=>{
-    console.log('Server running: http://localhost:3000')
+app.listen(5000,()=>{
+    console.log('Server running: http://localhost:5000')
 })

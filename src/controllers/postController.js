@@ -1,4 +1,4 @@
-const { postModel, userModel, imageModel } = require('../models/associations');
+const { postModel, userModel, imageModel, commentModel } = require('../models/associations');
 const { Sequelize} = require('sequelize');
 const redisClient = require('../utils/redisClient'); 
 const fs = require('fs').promises;
@@ -7,12 +7,24 @@ const fs = require('fs').promises;
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 
-async function setCache(key, value, expiration = 3600) {
-    await redisClient.set(key, JSON.stringify(value), 'EX', expiration);
+async function setCache(key, value) {
+    await redisClient.select(0);
+    const existingCache = await redisClient.get(key);
+    let updatedValue;
+
+    if (existingCache) {
+        const parsedCache = JSON.parse(existingCache);
+        updatedValue = Array.isArray(parsedCache) ? [...parsedCache, value] : [parsedCache, value];
+    } else {
+        updatedValue = Array.isArray(value) ? value : [value];
+    }
+
+    await redisClient.set(key, JSON.stringify(updatedValue), 'EX', 3600);
 }
 
 
 async function getCache(key) {
+    await redisClient.select(0);
     const cachedData = await redisClient.get(key);
     if (cachedData) {
         return JSON.parse(cachedData);
@@ -35,19 +47,23 @@ async function getAllPostsApproved(req, res) {
         }
 
         const posts = await postModel.findAndCountAll({
-            attributes: ['post_id', 'title', 'content'],
-            where: { is_approved: true },
+            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
+            where: { status: 'approved' },
             include: [
                 { 
-                    model: userModel, 
-                    attributes: ['full_name'] 
+                    model: userModel,
+                    attributes: ['user_id','full_name'] 
                 },
                 { 
                     model: imageModel, 
-                    attributes: ['image_url'], 
-                    where: { post_id: Sequelize.col('post_id') }  
+                    attributes: ['image_id','image_url']
+                },
+                { 
+                    model: commentModel, 
+                    attributes: ['comment_id','content']
                 }
             ],
+            order: [['created_at', 'DESC']],
             limit: limit,
             offset: offset
         });
@@ -81,20 +97,29 @@ async function getPost(req, res) {
             where: {
                 [Sequelize.Op.or]: [
                     { title: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } },
-                    { content: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } }
-                ]
+                    { content: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } },
+                    { user_id: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } }
+                ],
+                status: 'approved'
             },
-            attributes: ['post_id', 'title', 'content', 'image_url'],
-            include: [{
+            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
+            include: [ { 
                 model: userModel,
-                as: 'author',
-                attributes: ['username']
+                attributes: ['user_id','full_name'] 
+            },
+            { 
+                model: imageModel, 
+                attributes: ['image_id','image_url']
+            },
+            { 
+                model: commentModel, 
+                attributes: ['comment_id','content']
             }],
             order: [['created_at', 'DESC']],
             limit,
             offset,
         });
-
+        
         await setCache(cacheKey, posts);
 
         return res.status(200).json({ success: true, data: posts, fromCache: false });
@@ -103,7 +128,46 @@ async function getPost(req, res) {
         return res.status(500).json({ success: false, message: 'Failed to fetch posts.', error: error.message });
     }
 }
+//get posts pending
+async function getAllPosts(req, res) {
+    const page = parseInt(req.query.page) || DEFAULT_PAGE;
+    const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
+    const offset = (page - 1) * limit;
 
+    const cacheKey = `posts:page=${page}:limit=${limit}`;
+
+    try {
+        const cachedPosts = await getCache(cacheKey);
+        if (cachedPosts) {
+            return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
+        }
+
+        const posts = await postModel.findAndCountAll({
+            attributes: ['post_id', 'title', 'content','status', 'created_at', 'updated_at'],
+            where: { status: 'pending' },
+            include: [
+                { 
+                    model: userModel,
+                    attributes: ['user_id','full_name'] 
+                },
+                { 
+                    model: imageModel, 
+                    attributes: ['image_id','image_url']
+                }
+            ],
+            order: [['created_at', 'DESC']],
+            limit: limit,
+            offset: offset
+        });
+
+        await setCache(cacheKey, posts);
+
+        return res.status(200).json({ success: true, data: posts, fromCache: false });
+    } catch (error) {
+        console.error(`Error fetching posts: ${error.message}`);
+        return res.status(500).json({ success: false, message: "Failed to fetch posts." });
+    }
+}
 
 async function createPost(req, res) {
     const user_id = req.user?.user_id;
@@ -146,13 +210,13 @@ async function createPost(req, res) {
 async function approvePost(req, res){
     const  post_id  = req.params.post_id;
     try {
-        await redisClient.del(post_id);
+        await redisClient.flushDb();
         const post = await postModel.findByPk( post_id );
         if( !post ){
             return res.status(404).json({ success: false, message: 'Post not found' });
         }
 
-        post.is_approved = true;
+        post.status = 'approved';
         await post.save();
 
         return res.status(200).json({ success: true, message: 'Post approved successfully' });
@@ -211,8 +275,7 @@ async function updatePost(req, res) {
                     })
                 );
             }
-
-            await redisClient.del(post_id);
+            await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post updated successfully.' });
         }
@@ -251,10 +314,11 @@ async function removePost(req, res) {
             });
 
             await Promise.all(unlinkPromises);
-
+            
+            await commentModel.destroy({ where: { post_id } });
             await imageModel.destroy({ where: { post_id } });
             await postModel.destroy({ where: { post_id } });
-            await redisClient.del(post_id);
+            await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
         }
@@ -268,4 +332,4 @@ async function removePost(req, res) {
 
 
 
-module.exports = { getAllPostsApproved, getPost, createPost, approvePost, updatePost, removePost };
+module.exports = { getAllPostsApproved, getPost, getAllPosts, createPost, approvePost, updatePost, removePost };
