@@ -21,4 +21,4 @@ app.use('/api', commentRoute);
 
 app.listen(5000,()=>{
     console.log('Server running: http://localhost:5000')
-})
+});

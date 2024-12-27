@@ -1,5 +1,3 @@
-const { Account } = require('../models/accountModel');
-
 async function isAuthorized(req, res, next) {
     try {
         const user_id = req.params.user_id;

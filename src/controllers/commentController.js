@@ -4,7 +4,7 @@ const redisClient = require('../utils/redisClient');
 
 async function getAllComments(req, res){
     try {
-        const { post_id } = req.query
+        const { post_id } = req.query;
         const comments = await commentModel.findAll({
             where: {
                 post_id
@@ -30,9 +30,8 @@ async function createComment(req, res){
     try{
         const { content } = req.body;
         const post = await postModel.findByPk(post_id);
-
-        if(!post){
-            return res.status(404).json({ success: false, message: "Post not Found." });
+        if (!post || post.status !== 'approved') {
+            return res.status(404).json({ success: false, message: 'Post not found' });
         }
 
         const newComment = await commentModel.create({
@@ -52,15 +51,15 @@ async function editComment(req, res){
     const user_id = req.user.user_id;
     const { comment_id } = req.query;
     try {
-        const comment = await commentModel.findOne({where: {comment_id}});
-        if(!comment){
+        const comment = await commentModel.findOne({
+            where: { comment_id },
+            user_id
+        });
+        if( !comment ){
             return res.status(404).json({ success: false, message: "Comment not Found." });
         }
-        if(comment.user_id !== user_id){
-            return res.status(403).json({ success: false, message: "You are not allowed to edit this comment." });
-        }
-        const {content} = req.body;
-        const commentEdit =await commentModel.update({
+        const { content } = req.body;
+        const commentEdit = await commentModel.update({
             content: content || comment.content,
             user_id,
             post_id: comment.post_id
@@ -75,17 +74,17 @@ async function editComment(req, res){
 }
 
 async function removeComment(req, res){
-    const { user_id, role} = req.user;
+    const { user_id, role } = req.user;
     const comment_id = req.params.comment_id;
     try {
-        const comment = await commentModel.findOne({ where: {comment_id}});
+        const comment = await commentModel.findOne({ where: {comment_id} });
         if( role ==='admin' || comment.user_id === user_id){
             await redisClient.flushDb();
-            await commentModel.destroy({where: { comment_id }});
+            await commentModel.destroy({ where: { comment_id } });
             return res.status(200).json({ success: true, message: "Deleted successfully." });
         }
         return res.status(403).json({ success: false, message: "You are not allowed to delete this comment." })
-    } catch (error) {
+    } catch ( error ) {
         res.status(500).json({ success: false, message: "Failed to delete comment.", error: error.message });
     }
 }

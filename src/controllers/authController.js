@@ -20,9 +20,6 @@ function generateToken(acc) {
 async function login(req, res) {
     const { username, password } = req.body;
 
-    if (!username || !password) {
-        return res.status(400).json({ message: 'Username and password are required' });
-    }
     try {
         const acc = await accountModel.findOne({ where: { username } });
         if (!acc) {
@@ -45,9 +42,6 @@ async function register (req, res) {
     const { full_name, email, username, password, phone, address } = req.body;
 
     try {
-        if (!full_name || !email || !username || !password) {
-            return res.status(400).json({ success: false, message: "All fields are required." });
-        }
         const existingUser = await userModel.findOne({ where: { email } });
 
         if (existingUser) {
@@ -99,8 +93,8 @@ async function changePassword(req, res) {
     const user_id = req.user?.user_id;
     const { password, newpassword } = req.body;
 
-    if (!newpassword || newpassword.length < 6) {
-        return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
+    if (!newpassword || newpassword.length < 8) {
+        return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 8 ký tự' });
     }
 
     try {

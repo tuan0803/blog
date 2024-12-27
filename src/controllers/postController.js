@@ -1,4 +1,4 @@
-const { postModel, userModel, imageModel, commentModel } = require('../models/associations');
+const { postModel, userModel, imageModel, commentModel, reactionModel } = require('../models/associations');
 const { Sequelize} = require('sequelize');
 const redisClient = require('../utils/redisClient'); 
 const fs = require('fs').promises;
@@ -51,6 +51,10 @@ async function getAllPostsApproved(req, res) {
             where: { status: 'approved' },
             include: [
                 { 
+                    model: reactionModel,
+                    attributes: ['reaction_id', 'user_id', 'reaction_type'] 
+                },
+                { 
                     model: userModel,
                     attributes: ['user_id','full_name'] 
                 },
@@ -102,19 +106,25 @@ async function getPost(req, res) {
                 ],
                 status: 'approved'
             },
-            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
-            include: [ { 
-                model: userModel,
-                attributes: ['user_id','full_name'] 
-            },
-            { 
-                model: imageModel, 
-                attributes: ['image_id','image_url']
-            },
-            { 
-                model: commentModel, 
-                attributes: ['comment_id','content']
-            }],
+            attributes: ['post_id', 'title', 'content','reactions', 'status', 'created_at', 'updated_at'],
+            include: [ 
+                { 
+                    model: reactionModel,
+                    attributes: ['reaction_id', 'user_id', 'reaction_type'] 
+                },
+                { 
+                    model: userModel,
+                    attributes: ['user_id','full_name'] 
+                },
+                { 
+                    model: imageModel, 
+                    attributes: ['image_id','image_url']
+                },
+                { 
+                    model: commentModel, 
+                    attributes: ['comment_id','content']
+                }
+            ],
             order: [['created_at', 'DESC']],
             limit,
             offset,
@@ -143,7 +153,7 @@ async function getAllPosts(req, res) {
         }
 
         const posts = await postModel.findAndCountAll({
-            attributes: ['post_id', 'title', 'content','status', 'created_at', 'updated_at'],
+            attributes: ['post_id', 'title', 'content', 'reactions', 'status', 'created_at', 'updated_at'],
             where: { status: 'pending' },
             include: [
                 { 
@@ -223,7 +233,7 @@ async function approvePost(req, res){
     } catch (error) {
         return res.status(500).json({ success: false, message: 'Failed to approve post' });
     }
-}
+} 
 
 async function updatePost(req, res) {
     const post_id = req.params.post_id;
@@ -307,17 +317,17 @@ async function removePost(req, res) {
                 try {
                     await fs.access(image.image_url);
                     await fs.unlink(image.image_url); 
-                    console.log(`Deleted: ${image.image_url}`);
                 } catch (error) {
                     console.warn(`File not found: ${image.image_url}`); 
                 }
             });
 
             await Promise.all(unlinkPromises);
-            
+            await reactionModel.destroy({ where: { post_id }})
             await commentModel.destroy({ where: { post_id } });
             await imageModel.destroy({ where: { post_id } });
             await postModel.destroy({ where: { post_id } });
+        
             await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
