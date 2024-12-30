@@ -1,85 +1,86 @@
 const { postModel, userModel, imageModel, commentModel, reactionModel } = require('../models/associations');
 const { Sequelize} = require('sequelize');
-const redisClient = require('../utils/redisClient'); 
+// const redisClient = require('../utils/redisClient'); 
 const fs = require('fs').promises;
 
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 
-async function setCache(key, value) {
-    await redisClient.select(0);
-    const existingCache = await redisClient.get(key);
-    let updatedValue;
+// async function setCache(key, value) {
+//     await redisClient.select(0);
+//     const existingCache = await redisClient.get(key);
+//     let updatedValue;
 
-    if (existingCache) {
-        const parsedCache = JSON.parse(existingCache);
-        updatedValue = Array.isArray(parsedCache) ? [...parsedCache, value] : [parsedCache, value];
-    } else {
-        updatedValue = Array.isArray(value) ? value : [value];
-    }
+//     if (existingCache) {
+//         const parsedCache = JSON.parse(existingCache);
+//         updatedValue = Array.isArray(parsedCache) ? [...parsedCache, value] : [parsedCache, value];
+//     } else {
+//         updatedValue = Array.isArray(value) ? value : [value];
+//     }
 
-    await redisClient.set(key, JSON.stringify(updatedValue), 'EX', 3600);
-}
+//     await redisClient.set(key, JSON.stringify(updatedValue), 'EX', 3600);
+// }
 
 
-async function getCache(key) {
-    await redisClient.select(0);
-    const cachedData = await redisClient.get(key);
-    if (cachedData) {
-        return JSON.parse(cachedData);
-    } else {
-        return null;
-    }
-}
+// async function getCache(key) {
+//     await redisClient.select(0);
+//     const cachedData = await redisClient.get(key);
+//     if (cachedData) {
+//         return JSON.parse(cachedData);
+//     } else {
+//         return null;
+//     }
+// }
 
 async function getAllPostsApproved(req, res) {
     const page = parseInt(req.query.page) || DEFAULT_PAGE;
     const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
     const offset = (page - 1) * limit;
 
+    if (page <= 0 || limit <= 0) {
+        return res.status(400).json({ success: false, message: "Page and limit must be positive integers." });
+    }
+
     const cacheKey = `posts:page=${page}:limit=${limit}`;
+    const cacheTTL = 300; 
 
     try {
-        const cachedPosts = await getCache(cacheKey);
-        if (cachedPosts) {
-            return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
-        }
+        // const cachedPosts = await getCache(cacheKey);
+        // if (cachedPosts) {
+        //     return res.status(200).json({ success: true, data: cachedPosts.data, pagination: cachedPosts.pagination, fromCache: true });
+        // }
 
         const posts = await postModel.findAndCountAll({
             attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
             where: { status: 'approved' },
             include: [
-                { 
-                    model: reactionModel,
-                    attributes: ['reaction_id', 'user_id', 'reaction_type'] 
-                },
-                { 
-                    model: userModel,
-                    attributes: ['user_id','full_name'] 
-                },
-                { 
-                    model: imageModel, 
-                    attributes: ['image_id','image_url']
-                },
-                { 
-                    model: commentModel, 
-                    attributes: ['comment_id','content']
-                }
+                { model: reactionModel, attributes: ['reaction_id', 'user_id', 'reaction_type'] },
+                { model: userModel, attributes: ['user_id', 'full_name'] },
+                { model: imageModel, attributes: ['image_id', 'image_url'] },
+                { model: commentModel, attributes: ['comment_id', 'content'] }
             ],
             order: [['created_at', 'DESC']],
             limit: limit,
             offset: offset
         });
 
-        await setCache(cacheKey, posts);
+        const pagination = {
+            total: posts.count,
+            currentPage: page,
+            totalPages: Math.ceil(posts.count / limit)
+        };
 
-        return res.status(200).json({ success: true, data: posts, fromCache: false });
+        // Lưu cache
+        // await setCache(cacheKey, { data: posts.rows, pagination }, cacheTTL);
+
+        return res.status(200).json({ success: true, data: posts.rows, pagination, fromCache: false });
     } catch (error) {
         console.error(`Error fetching posts: ${error.message}`);
         return res.status(500).json({ success: false, message: "Failed to fetch posts." });
     }
 }
+
 
 
 async function getPost(req, res) {
@@ -89,13 +90,13 @@ async function getPost(req, res) {
     const offset = (page - 1) * limit;
 
     const sanitizedKeyword = keyword.replace(/[^a-zA-Z0-9 ]/g, '').toLowerCase();
-    const cacheKey = `search:${sanitizedKeyword}:page=${page}:limit=${limit}`;
+    // const cacheKey = `search:${sanitizedKeyword}:page=${page}:limit=${limit}`;
 
     try {
-        const cachedPosts = await getCache(cacheKey);
-        if (cachedPosts) {
-            return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
-        }
+        // const cachedPosts = await getCache(cacheKey);
+        // if (cachedPosts) {
+        //     return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
+        // }
 
         const posts = await postModel.findAndCountAll({
             where: {
@@ -130,7 +131,7 @@ async function getPost(req, res) {
             offset,
         });
         
-        await setCache(cacheKey, posts);
+        // await setCache(cacheKey, posts);
 
         return res.status(200).json({ success: true, data: posts, fromCache: false });
     } catch (error) {
@@ -144,13 +145,13 @@ async function getAllPosts(req, res) {
     const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
     const offset = (page - 1) * limit;
 
-    const cacheKey = `posts:page=${page}:limit=${limit}`;
+    // const cacheKey = `posts:page=${page}:limit=${limit}`;
 
     try {
-        const cachedPosts = await getCache(cacheKey);
-        if (cachedPosts) {
-            return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
-        }
+        // const cachedPosts = await getCache(cacheKey);
+        // if (cachedPosts) {
+        //     return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
+        // }
 
         const posts = await postModel.findAndCountAll({
             attributes: ['post_id', 'title', 'content', 'reactions', 'status', 'created_at', 'updated_at'],
@@ -170,7 +171,7 @@ async function getAllPosts(req, res) {
             offset: offset
         });
 
-        await setCache(cacheKey, posts);
+        // await setCache(cacheKey, posts);
 
         return res.status(200).json({ success: true, data: posts, fromCache: false });
     } catch (error) {
@@ -183,7 +184,7 @@ async function createPost(req, res) {
     const user_id = req.user?.user_id;
 
     try {
-        await redisClient.flushDb(); 
+        // await redisClient.flushDb(); 
         const { title, content } = req.body;
         if (title === ' ' || content === ' ') {
             return res.status(400).json({ success: false, message: "Title and content are required." });
@@ -220,7 +221,7 @@ async function createPost(req, res) {
 async function approvePost(req, res){
     const  post_id  = req.params.post_id;
     try {
-        await redisClient.flushDb();
+        // await redisClient.flushDb();
         const post = await postModel.findByPk( post_id );
         if( !post ){
             return res.status(404).json({ success: false, message: 'Post not found' });
@@ -285,7 +286,7 @@ async function updatePost(req, res) {
                     })
                 );
             }
-            await redisClient.flushDb();
+            // await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post updated successfully.' });
         }
@@ -328,7 +329,7 @@ async function removePost(req, res) {
             await imageModel.destroy({ where: { post_id } });
             await postModel.destroy({ where: { post_id } });
         
-            await redisClient.flushDb();
+            // await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
         }

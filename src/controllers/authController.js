@@ -1,9 +1,11 @@
 // controllers/authController.js
 const { userModel, accountModel } = require('../models/associations');
+const BlackList = require('../models/blackListModel'); 
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const redisClient = require('../utils/redisClient');
-const sendEmail = require('../utils/sendEmail');  
+const { verifyToken } = require('../middlewares/authMiddleware');
+// const redisClient = require('../utils/redisClient');
+// const sendEmail = require('../utils/sendEmail');  
 
 
 const TOKEN_EXPIRATION_TIME = 3600;
@@ -76,15 +78,28 @@ async function register (req, res) {
     }
 };
 
-async function logout(req, res) {
-    const token = req.header('Authorization')?.split(' ')[1];
-    try {
-        const tokenKey = `blacklist:${token}`;
-        await redisClient.setEx(tokenKey, TOKEN_EXPIRATION_TIME, 'blacklist');
 
+async function logout(req, res) {
+    const token = req.header('Authorization')?.split(' ')[1];  // Extract token from the Authorization header
+
+    if (!token) {
+        return res.status(400).json({ message: 'Token not provided.' });
+    }
+
+    try {
+
+        const expireDate = new Date();
+        expireDate.setSeconds(expireDate.getSeconds() + TOKEN_EXPIRATION_TIME); 
+
+        await BlackList.create({
+            token: token,
+            expire_at: expireDate,
+            created_at: new Date(), 
+        });
         res.clearCookie('token');
         res.json({ message: 'Logged out successfully.' });
     } catch (error) {
+        console.error("Error logging out:", error);
         res.status(500).json({ message: 'Error logging out.', error: error.message });
     }
 }
@@ -121,10 +136,11 @@ async function changePassword(req, res) {
 }
 
 async function verifyAccount (req, res) {
-    const { token } = req.params;
-
+    const { token } = req.query;
+   
     try {
-        const decoded = jwt.verify(token, 'secret_key');
+        const decoded = await verifyToken( token );
+        console.log(token)
         const account = await accountModel.findOne({ where: { user_id: decoded.user_id } });
         
         if (!account) {

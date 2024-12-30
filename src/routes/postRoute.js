@@ -1,7 +1,7 @@
 const express = require('express');
 const post = require('../controllers/postController');
 const reaction = require('../controllers/reactionController');
-const authenticateToken = require('../middlewares/authMiddleware');
+const { authenticateToken } = require('../middlewares/authMiddleware');
 const { isAdmin, isUser} = require('../middlewares/checkRole');
 const checkBlackList = require('../middlewares/checkBlackList');
 const upload = require('../middlewares/uploadMiddleware');

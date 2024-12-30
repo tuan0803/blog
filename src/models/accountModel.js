@@ -24,18 +24,18 @@ const Account = sequelize.define('Account', {
             msg: 'Username must be between 3 and 50 characters.',
           },
         },
-      },
-      password: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        validate: {
-          notEmpty: { msg: 'Password is required.' }, 
-          len: {
-            args: [8], 
-            msg: 'Password must be at least 8 characters long.',
-          },
+    },
+    password: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        notEmpty: { msg: 'Password is required.' }, 
+        len: {
+          args: [8], 
+          msg: 'Password must be at least 8 characters long.',
         },
       },
+    },
     role: {
         type: DataTypes.ENUM('user', 'admin'),
         defaultValue: 'user'

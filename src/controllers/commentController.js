@@ -1,5 +1,5 @@
 const { commentModel, userModel, postModel } = require('../models/associations');
-const redisClient = require('../utils/redisClient'); 
+// const redisClient = require('../utils/redisClient'); 
 
 
 async function getAllComments(req, res){
@@ -39,7 +39,7 @@ async function createComment(req, res){
             post_id,
             user_id
         });
-        await redisClient.flushDb();
+        // await redisClient.flushDb();
         return res.status(201).json({ success: true, message: "Created successfully.", comment: newComment });
 
     } catch(error){
@@ -66,7 +66,7 @@ async function editComment(req, res){
         }, {
             where: {comment_id: comment_id}
         })
-        await redisClient.flushDb();
+        // await redisClient.flushDb();
         res.status(200).json({ success: true, message: "Updated successfully." });
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to update comment.", error: error.message });
@@ -79,7 +79,7 @@ async function removeComment(req, res){
     try {
         const comment = await commentModel.findOne({ where: {comment_id} });
         if( role ==='admin' || comment.user_id === user_id){
-            await redisClient.flushDb();
+            // await redisClient.flushDb();
             await commentModel.destroy({ where: { comment_id } });
             return res.status(200).json({ success: true, message: "Deleted successfully." });
         }

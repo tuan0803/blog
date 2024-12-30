@@ -1,6 +1,6 @@
 const express = require('express');
 const comment = require('../controllers/commentController');
-const authenticateToken = require('../middlewares/authMiddleware');
+const { authenticateToken } = require('../middlewares/authMiddleware');
 const checkBlackList = require('../middlewares/checkBlackList');
 const route = express.Router();
 

@@ -1,11 +1,23 @@
-const redisClient = require('../utils/redisClient'); 
+const BlackList = require('../models/blackListModel'); 
 
-async function getCache(key) {
-    const cachedData = await redisClient.get(key);
-    if (cachedData) {
-        return JSON.parse(cachedData);
-    } else {
+
+
+const isToken = async (token) =>{
+    try {
+        const blacklistToken = await BlackList.findOne({
+            where: {
+                token: token,
+                expire_at: { [Sequelize.Op.gt]: new Date() }, 
+            },
+        });
+        
+        if(blacklistToken) {
+            return JSON.parse(blacklistToken);
+        }
         return null;
+    } catch(e){
+        console.log(e);
+        return false;
     }
 }
 
@@ -17,7 +29,7 @@ const checkBlackList = async (req, res, next) => {
     }
 
     try {
-        const result = await getCache(token); 
+        const result = await isToken(token); 
 
         if (result) {
             return res.status(401).json({ success: false, message: 'This token has expired.' });
@@ -28,5 +40,19 @@ const checkBlackList = async (req, res, next) => {
         return res.status(500).json({ success: false, message: 'Internal redis server error.', error: error.message });
     }
 }
+
+
+
+
+// async function getCache(key) {
+//     const cachedData = await redisClient.get(key);
+//     if (cachedData) {
+//         return JSON.parse(cachedData);
+//     } else {
+//         return null;
+//     }
+// }
+
+
 
 module.exports = checkBlackList;
