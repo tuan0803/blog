@@ -1,8 +1,8 @@
 const BlackList = require('../models/blackListModel'); 
+const { Sequelize } = require('sequelize')
 
 
-
-const isToken = async (token) =>{
+const isToken = async (token) => {
     try {
         const blacklistToken = await BlackList.findOne({
             where: {
@@ -11,11 +11,11 @@ const isToken = async (token) =>{
             },
         });
         
-        if(blacklistToken) {
-            return JSON.parse(blacklistToken);
+        if (blacklistToken) {
+            return blacklistToken; 
         }
         return null;
-    } catch(e){
+    } catch (e) {
         console.log(e);
         return false;
     }
@@ -23,13 +23,12 @@ const isToken = async (token) =>{
 
 const checkBlackList = async (req, res, next) => {
     const token = req.header('Authorization')?.split(' ')[1];
-
     if (!token) {
         return res.status(401).json({ message: 'Invalid token.' });
     }
 
     try {
-        const result = await isToken(token); 
+        const result = await isToken(token);
 
         if (result) {
             return res.status(401).json({ success: false, message: 'This token has expired.' });
@@ -37,9 +36,10 @@ const checkBlackList = async (req, res, next) => {
 
         next();
     } catch (error) {
-        return res.status(500).json({ success: false, message: 'Internal redis server error.', error: error.message });
+        return res.status(500).json({ success: false, message: 'Internal server error.', error: error.message });
     }
 }
+
 
 
 
