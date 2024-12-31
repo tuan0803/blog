@@ -4,6 +4,7 @@ const BlackList = require('../models/blackListModel');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { verifyToken } = require('../middlewares/authMiddleware');
+const sequelize = require('../config/db');
 // const redisClient = require('../utils/redisClient');
 // const sendEmail = require('../utils/sendEmail');  
 
@@ -42,7 +43,7 @@ async function login(req, res) {
 
 async function register (req, res) {
     const { full_name, email, username, password, phone, address } = req.body;
-
+    const transaction = await sequelize.transaction();
     try {
         const existingUser = await userModel.findOne({ where: { email } });
 
@@ -57,7 +58,7 @@ async function register (req, res) {
             email,
             phone,
             address
-        });
+        }, { transaction });
 
         const newAccount = await accountModel.create({
             user_id: newUser.user_id,
@@ -65,15 +66,17 @@ async function register (req, res) {
             password: hashedPassword,
             role: 'user',
             status: 'inactive'
-        });
+        }, { transaction });
 
+        await transaction.commit();
         // const token = jwt.sign({ user_id: newUser.user_id }, 'secret_key', { expiresIn: '1h' });
         // sendEmail(newUser.email, 'Verify your account', `<a href="http://localhost:5000/verify/${token}">Verify Account</a>`);
 
         res.status(201).json({
-            message: 'Account created   successfully. Please verify your email.'
+            message: 'Account created successfully. Please verify your email.'
         });
     } catch (error) {
+        await transaction.rollback();
         res.status(500).json({ message: 'Error creating account', error: error.message });
     }
 };

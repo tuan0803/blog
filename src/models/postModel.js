@@ -11,7 +11,7 @@ const Post = db.define('post', {
         type: DataTypes.STRING,
         allowNull: false,
         validate: {
-        notEmpty: { msg: 'Title is required.' }, 
+            notEmpty: { msg: 'Title is required.' }, 
         len: {
             args: [5, 255], 
             msg: 'Title must be between 5 and 255 characters.',
@@ -22,7 +22,7 @@ const Post = db.define('post', {
         type: DataTypes.TEXT,
         allowNull: false,
         validate: {
-        notEmpty: { msg: 'Content is required.' }, 
+            notEmpty: { msg: 'Content is required.' }, 
         len: {
             args: [10],
             msg: 'Content must be at least 10 characters long.',
