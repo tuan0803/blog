@@ -57,8 +57,7 @@ async function getAllPostsApproved(req, res) {
             include: [
                 { model: reactionModel, attributes: ['reaction_id', 'user_id', 'reaction_type'] },
                 { model: userModel, attributes: ['user_id', 'full_name'] },
-                { model: imageModel, attributes: ['image_id', 'image_url'] },
-                { model: commentModel, attributes: ['comment_id', 'content'] }
+                { model: imageModel, attributes: ['image_id', 'image_url'] }
             ],
             order: [['created_at', 'DESC']],
             limit: limit,
@@ -120,10 +119,6 @@ async function getPost(req, res) {
                 { 
                     model: imageModel, 
                     attributes: ['image_id','image_url']
-                },
-                { 
-                    model: commentModel, 
-                    attributes: ['comment_id','content']
                 }
             ],
             order: [['created_at', 'DESC']],

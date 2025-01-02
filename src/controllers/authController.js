@@ -43,6 +43,7 @@ async function login(req, res) {
 
 async function register (req, res) {
     const { full_name, email, username, password, phone, address } = req.body;
+    console.log(req.body);
     const transaction = await sequelize.transaction();
     try {
         const existingUser = await userModel.findOne({ where: { email } });

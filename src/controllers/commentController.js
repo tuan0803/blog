@@ -10,14 +10,10 @@ async function getAllComments(req, res){
                 post_id
             },
             attributes: ['comment_id','content', 'created_at'],
-            include: [{
-                model: userModel,
-                as: 'author',
-                attributes: ['username']
-            }],
+            include: [{ model: userModel, attributes: ['user_id', 'full_name'] },],
             order:[['created_at', 'DESC']]
         });
-        res.status(200).json(comments);
+        return res.status(200).json({ success: true, data: comments});
     } catch (error) {
         res.status(500).json({success: false, message: "Failed to fectch comments.", error: error.message });
     }
