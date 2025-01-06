@@ -148,7 +148,7 @@ async function getPost(req, res) {
                 ],
                 status: 'approved'
             },
-            attributes: ['post_id', 'title', 'content','reactions', 'status', 'created_at', 'updated_at'],
+            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
             include: [ 
                 { 
                     model: reactionModel,
