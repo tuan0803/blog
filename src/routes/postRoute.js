@@ -11,7 +11,6 @@ const route = express.Router();
 route.get('/posts', post.getAllPostsApproved);
 route.get('/posts/filter',checkBlackList, authenticateToken, isAdmin, post.getFilteredPosts);
 route.get('/posts/search', post.getPost);
-route.get('/posts/pending', post.getAllPosts);
 route.post('/posts/create', checkBlackList, authenticateToken, upload.array('images', 5), post.createPost);
 route.put('/posts/approve/:post_id', checkBlackList, authenticateToken, isAdmin, post.approvePost);
 route.put('/posts/edit/:post_id', checkBlackList, authenticateToken, upload.array('images', 5), post.updatePost);
