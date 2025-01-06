@@ -20,7 +20,7 @@ route.delete('/posts/delete/:post_id', checkBlackList, authenticateToken, post.r
 //Reaction (like, dislike, wow, ...)
 
 
-route.post('/posts/:post_id/reactions', checkBlackList, authenticateToken, isUser, reaction.createReaction);
+route.post('/posts/:post_id/reactions', checkBlackList, authenticateToken, reaction.createReaction);
 route.delete('/posts/:post_id/reactions/delete/', checkBlackList, authenticateToken, isUser, reaction.deleteReaction);
 route.put('/posts/:post_id/reactions/edit', checkBlackList, authenticateToken, isUser, reaction.updateReaction);
 
