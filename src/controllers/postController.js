@@ -80,8 +80,50 @@ async function getAllPostsApproved(req, res) {
     }
 }
 
+//filter
+async function getFilteredPosts(req, res) {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
 
+    const filters = {
+        status: req.query.status,
+    };
+
+    const whereClause = {};
+    if (filters.status) whereClause.status = filters.status;
+
+    try {
+        const posts = await postModel.findAndCountAll({
+            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
+            where: whereClause,
+            include: [
+                { model: userModel, attributes: ['user_id', 'full_name'] },
+                { model: reactionModel, attributes: ['reaction_id', 'reaction_type'] },
+                { model: imageModel, attributes: ['image_id', 'image_url'] }
+            ],
+            order: [['created_at', 'DESC']],
+            limit: limit,
+            offset: offset,
+        });
+
+        const pagination = {
+            total: posts.count,
+            currentPage: page,
+            totalPages: Math.ceil(posts.count / limit),
+        };
+
+        return res.status(200).json({ success: true, data: posts.rows, pagination });
+    } catch (error) {
+        console.error(`Error fetching filtered posts: ${error.message}`);
+        return res.status(500).json({ success: false, message: "Failed to fetch posts." });
+    }
+}
+
+
+
+//search blog
 async function getPost(req, res) {
     const { keyword = '' } = req.query;
     const page = parseInt(req.query.page) || DEFAULT_PAGE;
@@ -314,7 +356,7 @@ async function removePost(req, res) {
                     await fs.access(image.image_url);
                     await fs.unlink(image.image_url); 
                 } catch (error) {
-                    console.warn(`File not found: ${image.image_url}`); 
+                    console.error(`File not found: ${image.image_url}`); 
                 }
             });
 
@@ -338,4 +380,4 @@ async function removePost(req, res) {
 
 
 
-module.exports = { getAllPostsApproved, getPost, getAllPosts, createPost, approvePost, updatePost, removePost };
+module.exports = { getAllPostsApproved, getPost, getAllPosts, createPost, getFilteredPosts, approvePost, updatePost, removePost };
