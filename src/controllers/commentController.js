@@ -25,6 +25,7 @@ async function createComment(req, res){
     
     try{
         const { content } = req.body;
+        console.log(user_id)
         const post = await postModel.findByPk(post_id);
         if (!post || post.status !== 'approved') {
             return res.status(404).json({ success: false, message: 'Post not found' });

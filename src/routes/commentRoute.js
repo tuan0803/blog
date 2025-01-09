@@ -7,8 +7,8 @@ const route = express.Router();
 
 
 route.get('/comments', comment.getAllComments);
-route.post('/comment/create', checkBlackList, authenticateToken, comment.createComment);
-route.put('/comment/edit', checkBlackList, authenticateToken, comment.editComment);
-route.delete('/comment/remove/:comment_id', checkBlackList, authenticateToken, comment.removeComment);
+route.post('/comments/create', checkBlackList, authenticateToken, comment.createComment);
+route.put('/comments/edit', checkBlackList, authenticateToken, comment.editComment);
+route.delete('/comments/remove/:comment_id', checkBlackList, authenticateToken, comment.removeComment);
 
 module.exports = route;

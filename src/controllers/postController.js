@@ -1,7 +1,8 @@
-const { postModel, userModel, imageModel, commentModel, reactionModel } = require('../models/associations');
+const { postModel, userModel, imageModel, reactionModel } = require('../models/associations');
 const { Sequelize} = require('sequelize');
 // const redisClient = require('../utils/redisClient'); 
 const fs = require('fs').promises;
+const { createPostSchema, updatePostSchema } = require('../utils/validationSchema');
 
 
 const DEFAULT_PAGE = 1;
@@ -32,32 +33,34 @@ const DEFAULT_LIMIT = 10;
 //         return null;
 //     }
 // }
-
-async function getAllPostsApproved(req, res) {
+async function getAllPosts(req, res) {
     const page = parseInt(req.query.page) || DEFAULT_PAGE;
     const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
     const offset = (page - 1) * limit;
+    const { role } = req.user; 
 
-    if (page <= 0 || limit <= 0) {
-        return res.status(400).json({ success: false, message: "Page and limit must be positive integers." });
+    let statusFilter = ['approved'];  
+    if (role === 'admin') {
+        statusFilter = ['approved', 'pending', 'rejected']; 
     }
 
-    const cacheKey = `posts:page=${page}:limit=${limit}`;
-    const cacheTTL = 300; 
-
     try {
-        // const cachedPosts = await getCache(cacheKey);
-        // if (cachedPosts) {
-        //     return res.status(200).json({ success: true, data: cachedPosts.data, pagination: cachedPosts.pagination, fromCache: true });
-        // }
-
         const posts = await postModel.findAndCountAll({
             attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
-            where: { status: 'approved' },
+            where: {
+                status: {
+                    [Sequelize.Op.in]: statusFilter 
+                }
+            },
             include: [
-                { model: reactionModel, attributes: ['reaction_id', 'user_id', 'reaction_type'] },
-                { model: userModel, attributes: ['user_id', 'full_name'] },
-                { model: imageModel, attributes: ['image_id', 'image_url'] }
+                { 
+                    model: userModel,
+                    attributes: ['user_id','full_name'] 
+                },
+                { 
+                    model: imageModel, 
+                    attributes: ['image_id','image_url']
+                }
             ],
             order: [['created_at', 'DESC']],
             limit: limit,
@@ -70,162 +73,25 @@ async function getAllPostsApproved(req, res) {
             totalPages: Math.ceil(posts.count / limit)
         };
 
-        // Lưu cache
-        // await setCache(cacheKey, { data: posts.rows, pagination }, cacheTTL);
-
-        return res.status(200).json({ success: true, data: posts.rows, pagination, fromCache: false });
-    } catch (error) {
-        console.error(`Error fetching posts: ${error.message}`);
-        return res.status(500).json({ success: false, message: "Failed to fetch posts." });
-    }
-}
-
-//filter
-async function getFilteredPosts(req, res) {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-
-
-    const filters = {
-        status: req.query.status,
-    };
-
-    const whereClause = {};
-    if (filters.status) whereClause.status = filters.status;
-
-    try {
-        const posts = await postModel.findAndCountAll({
-            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
-            where: whereClause,
-            include: [
-                { model: userModel, attributes: ['user_id', 'full_name'] },
-                { model: reactionModel, attributes: ['reaction_id', 'reaction_type'] },
-                { model: imageModel, attributes: ['image_id', 'image_url'] }
-            ],
-            order: [['created_at', 'DESC']],
-            limit: limit,
-            offset: offset,
-        });
-
-        const pagination = {
-            total: posts.count,
-            currentPage: page,
-            totalPages: Math.ceil(posts.count / limit),
-        };
-
         return res.status(200).json({ success: true, data: posts.rows, pagination });
     } catch (error) {
-        console.error(`Error fetching filtered posts: ${error.message}`);
-        return res.status(500).json({ success: false, message: "Failed to fetch posts." });
-    }
-}
-
-
-
-//search blog
-async function getPost(req, res) {
-    const { keyword = '' } = req.query;
-    const page = parseInt(req.query.page) || DEFAULT_PAGE;
-    const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
-    const offset = (page - 1) * limit;
-
-    const sanitizedKeyword = keyword.replace(/[^a-zA-Z0-9 ]/g, '').toLowerCase();
-    // const cacheKey = `search:${sanitizedKeyword}:page=${page}:limit=${limit}`;
-
-    try {
-        // const cachedPosts = await getCache(cacheKey);
-        // if (cachedPosts) {
-        //     return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
-        // }
-
-        const posts = await postModel.findAndCountAll({
-            where: {
-                [Sequelize.Op.or]: [
-                    { title: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } },
-                    { content: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } },
-                    { user_id: { [Sequelize.Op.like]: `%${sanitizedKeyword}%` } }
-                ],
-                status: 'approved'
-            },
-            attributes: ['post_id', 'title', 'content', 'status', 'created_at', 'updated_at'],
-            include: [ 
-                { 
-                    model: reactionModel,
-                    attributes: ['reaction_id', 'user_id', 'reaction_type'] 
-                },
-                { 
-                    model: userModel,
-                    attributes: ['user_id','full_name'] 
-                },
-                { 
-                    model: imageModel, 
-                    attributes: ['image_id','image_url']
-                }
-            ],
-            order: [['created_at', 'DESC']],
-            limit,
-            offset,
-        });
-        
-        // await setCache(cacheKey, posts);
-
-        return res.status(200).json({ success: true, data: posts, fromCache: false });
-    } catch (error) {
-        console.error(`Error fetching posts with keyword "${keyword}": ${error.message}`);
-        return res.status(500).json({ success: false, message: 'Failed to fetch posts.', error: error.message });
-    }
-}
-//get posts pending
-async function getAllPosts(req, res) {
-    const page = parseInt(req.query.page) || DEFAULT_PAGE;
-    const limit = parseInt(req.query.limit) || DEFAULT_LIMIT;
-    const offset = (page - 1) * limit;
-
-    // const cacheKey = `posts:page=${page}:limit=${limit}`;
-
-    try {
-        // const cachedPosts = await getCache(cacheKey);
-        // if (cachedPosts) {
-        //     return res.status(200).json({ success: true, data: cachedPosts, fromCache: true });
-        // }
-
-        const posts = await postModel.findAndCountAll({
-            attributes: ['post_id', 'title', 'content', 'reactions', 'status', 'created_at', 'updated_at'],
-            where: { status: 'pending' },
-            include: [
-                { 
-                    model: userModel,
-                    attributes: ['user_id','full_name'] 
-                },
-                { 
-                    model: imageModel, 
-                    attributes: ['image_id','image_url']
-                }
-            ],
-            order: [['created_at', 'DESC']],
-            limit: limit,
-            offset: offset
-        });
-
-        // await setCache(cacheKey, posts);
-
-        return res.status(200).json({ success: true, data: posts, fromCache: false });
-    } catch (error) {
         console.error(`Error fetching posts: ${error.message}`);
         return res.status(500).json({ success: false, message: "Failed to fetch posts." });
     }
 }
+
 
 async function createPost(req, res) {
     const user_id = req.user?.user_id;
 
     try {
-        // await redisClient.flushDb(); 
-        const { title, content } = req.body;
-        if (title === ' ' || content === ' ') {
-            return res.status(400).json({ success: false, message: "Title and content are required." });
+        // Validate input data
+        const { error, value } = createPostSchema.validate(req.body);
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
         }
+
+        const { title, content } = value;
 
         const newPost = await postModel.create({
             title,
@@ -278,6 +144,11 @@ async function updatePost(req, res) {
     const { user_id, role } = req.user;
 
     try {
+        const { error, value } = updatePostSchema.validate(req.body);
+        if (error) {
+            return res.status(400).json({ success: false, message: error.details[0].message });
+        }
+
         const post = await postModel.findOne({ where: { post_id } });
 
         if (!post) {
@@ -285,8 +156,8 @@ async function updatePost(req, res) {
         }
 
         if (role === 'admin' || post.user_id == user_id) {
-            
-            const { title, content } = req.body;
+            const { title, content } = value;
+
             await postModel.update(
                 {
                     title: title || post.title,
@@ -294,36 +165,6 @@ async function updatePost(req, res) {
                 },
                 { where: { post_id } }
             );
-
-            const oldImages = await imageModel.findAll({
-                where: { post_id },
-                attributes: ['image_url']
-            });
-
-            if (req.files && req.files.length > 0) {
-                await Promise.all(
-                    oldImages.map(image => {
-                        try {
-                            fs.unlinkSync(image.image_url); 
-                        } catch (error) {
-                            console.error(`Failed to delete: ${image.image_url}`, error);
-                        }
-                    })
-                );
-
-                await imageModel.destroy({ where: { post_id } });
-
-                const image_urls = req.files.map(file => file.path);
-                await Promise.all(
-                    image_urls.map(async (image_url) => {
-                        await imageModel.create({
-                            post_id,
-                            image_url
-                        });
-                    })
-                );
-            }
-            // await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post updated successfully.' });
         }
@@ -334,6 +175,7 @@ async function updatePost(req, res) {
         return res.status(500).json({ success: false, message: 'Failed to edit post', error: error.message });
     }
 }
+
 
 async function removePost(req, res) {
     const post_id = req.params.post_id;
@@ -346,26 +188,8 @@ async function removePost(req, res) {
         }
 
         if (role === 'admin' || post.user_id === user_id) {
-            const images = await imageModel.findAll({
-                where: { post_id },
-                attributes: ['image_url']
-            });
-
-            const unlinkPromises = images.map(async (image) => {
-                try {
-                    await fs.access(image.image_url);
-                    await fs.unlink(image.image_url); 
-                } catch (error) {
-                    console.error(`File not found: ${image.image_url}`); 
-                }
-            });
-
-            await Promise.all(unlinkPromises);
-            await reactionModel.destroy({ where: { post_id }})
-            await commentModel.destroy({ where: { post_id } });
-            await imageModel.destroy({ where: { post_id } });
+            
             await postModel.destroy({ where: { post_id } });
-        
             // await redisClient.flushDb();
 
             return res.status(200).json({ success: true, message: 'Post deleted successfully.' });
@@ -380,4 +204,4 @@ async function removePost(req, res) {
 
 
 
-module.exports = { getAllPostsApproved, getPost, getAllPosts, createPost, getFilteredPosts, approvePost, updatePost, removePost };
+module.exports = { getAllPosts, createPost, approvePost, updatePost, removePost };

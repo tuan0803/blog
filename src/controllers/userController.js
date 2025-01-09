@@ -78,17 +78,13 @@ async function removeUser(req, res) {
     const { user_id } = req.params;
 
     try {
-        const accountDeleted = await accountModel.destroy({ where: { user_id } });
+        const userDeleted = await userModel.destroy({ where: { user_id } });
 
-        if (accountDeleted) {
-            const userDeleted = await userModel.destroy({ where: { user_id } });
-
-            if (userDeleted) {
-                return res.status(200).json({
-                    success: true,
-                    message: 'User and associated account deleted successfully.',
-                });
-            }
+        if (userDeleted) {
+            return res.status(200).json({
+                success: true,
+                message: 'User and associated account deleted successfully.',
+            });
         }
 
         return res.status(400).json({

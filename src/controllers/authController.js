@@ -1,4 +1,5 @@
 // controllers/authController.js
+const { loginSchema, registerSchema, changePasswordSchema } = require('../utils/validationSchema');
 const { userModel, accountModel } = require('../models/associations');
 const BlackList = require('../models/blackListModel'); 
 const bcrypt = require('bcrypt');
@@ -9,19 +10,25 @@ const sequelize = require('../config/db');
 // const sendEmail = require('../utils/sendEmail');  
 
 
+
 const TOKEN_EXPIRATION_TIME = 3600;
+
 function generateToken(acc) {
     const payload = {
         user_id: acc.user_id,
         role: acc.role
     };
-
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
-    return token;
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
 }
 
 async function login(req, res) {
     const { username, password } = req.body;
+
+    // Validate input
+    const { error } = loginSchema.validate({ username, password });
+    if (error) {
+        return res.status(400).json({ success: false, message: error.details[0].message });
+    }
 
     try {
         const acc = await accountModel.findOne({ where: { username } });
@@ -41,9 +48,14 @@ async function login(req, res) {
     }
 }
 
-async function register (req, res) {
+async function register(req, res) {
     const { full_name, email, username, password, phone, address } = req.body;
-    console.log(req.body);
+
+    const { error } = registerSchema.validate({ full_name, email, username, password, phone, address });
+    if (error) {
+        return res.status(400).json({ message: error.details[0].message });
+    }
+
     const transaction = await sequelize.transaction();
     try {
         const existingUser = await userModel.findOne({ where: { email } });
@@ -54,25 +66,23 @@ async function register (req, res) {
 
         const hashedPassword = bcrypt.hashSync(password, 10);
 
-        const newUser = await userModel.create({
-            full_name,
-            email,
-            phone,
-            address
-        }, { transaction });
+        const newUser = await userModel.create(
+            { full_name, email, phone, address },
+            { transaction }
+        );
 
-        const newAccount = await accountModel.create({
-            user_id: newUser.user_id,
-            username,
-            password: hashedPassword,
-            role: 'user',
-            status: 'inactive'
-        }, { transaction });
+        const newAccount = await accountModel.create(
+            {
+                user_id: newUser.user_id,
+                username,
+                password: hashedPassword,
+                role: 'user',
+                status: 'inactive'
+            },
+            { transaction }
+        );
 
         await transaction.commit();
-        // const token = jwt.sign({ user_id: newUser.user_id }, 'secret_key', { expiresIn: '1h' });
-        // sendEmail(newUser.email, 'Verify your account', `<a href="http://localhost:5000/verify/${token}">Verify Account</a>`);
-
         res.status(201).json({
             message: 'Account created successfully. Please verify your email.'
         });
@@ -80,8 +90,7 @@ async function register (req, res) {
         await transaction.rollback();
         res.status(500).json({ message: 'Error creating account', error: error.message });
     }
-};
-
+}
 
 async function logout(req, res) {
     const token = req.header('Authorization')?.split(' ')[1];  // Extract token from the Authorization header
@@ -112,8 +121,10 @@ async function changePassword(req, res) {
     const user_id = req.user?.user_id;
     const { password, newpassword } = req.body;
 
-    if (!newpassword || newpassword.length < 8) {
-        return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 8 ký tự' });
+    // Validate input
+    const { error } = changePasswordSchema.validate({ password, newpassword });
+    if (error) {
+        return res.status(400).json({ message: error.details[0].message });
     }
 
     try {
@@ -128,14 +139,12 @@ async function changePassword(req, res) {
             return res.status(400).json({ message: 'Invalid old password' });
         }
 
-        const hashedNewPassword = await bcrypt.hash(newpassword, 10); 
+        const hashedNewPassword = await bcrypt.hash(newpassword, 10);
         await accountModel.update({ password: hashedNewPassword }, { where: { user_id } });
 
-        return res.status(200).json({ message: 'Password updated successfully.' });
-
+        res.status(200).json({ message: 'Password updated successfully.' });
     } catch (error) {
-        console.error(error);
-        return res.status(500).json({ message: 'Error changing password', error: error.message });
+        res.status(500).json({ message: 'Error changing password', error: error.message });
     }
 }
 

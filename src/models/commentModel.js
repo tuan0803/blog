@@ -18,10 +18,7 @@ const comment = db.define('comment', {
     },
     content: {
         type: DATATYPES.STRING,
-        allowNull: false,
-        validate: {
-            noEmpty: { msg: 'Username is required.' }
-        }
+        allowNull: false
     },
     created_at: {
         type: DATATYPES.DATE,
